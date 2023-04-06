@@ -3,70 +3,36 @@ on:
   push:
 
 jobs:
-  check:
+  build:
+    name: Build
+    runs-on: ubuntu-latest
     env:
       result_file: result.log
-#      channel: git-test
-#      GIT: ${{secrets.JUMP_IP}} 
-    runs-on: ubuntu-latest
-#    outputs:
-#      output1: ${{steps.check.outputs.check}}
     steps:
-      - name: get info using SSH key
-        id: info
-        run: |
-          mkdir ~/.ssh
-          eval `ssh-agent -s`
-          ssh-add - <<< "${{secrets.SSH_KEY}}" 
-          ssh-keyscan -H ${{ secrets.JUMP_IP }} >> ~/.ssh/known_hosts
-          ssh ${{ secrets.JUMP_USERNAME }}@${{ secrets.JUMP_IP }} ssh-keyscan ${{ secrets.K3S_HOST }} >> ~/.ssh/known_hosts
-          sshpass -p ${{ secrets.K3S_PASS  }} ssh -oProxyCommand="sshpass ssh -W %h:%p ${{ secrets.JUMP_USERNAME }}@${{ secrets.JUMP_IP }}" root@${{ secrets.3S_HOST }} "kubectl get pods -A" >> ${{ env.result_file }}
-          OUTPUT=$(cat ${{ env.result_file }} | grep -c 'Running') && echo "::set-output name=OUTPUT::$OUTPUT" 
-          
-#             - name: Executing remote ssh commands using password
-#      uses: appleboy/ssh-action@v0.1.6
-#      id: check
-#      env:
-#        SSH_PUB: ${{secrets.SSH_PUB}}
-#      with:
-#        host: ${{secrets.JUMP_IP}}
-#        username: ${{ secrets.JUMP_USERNAME }}
-#        password: ${{ secrets.JUMP_PASS}}
-#        envs: SSH_PUB
-#        script:  |
-#          echo $SSH_PUB >> ~/.ssh/k3s.pub
 
-#    - name: Add ssh and checking pods
-#      run: |
-#        mkdir -p ~/.ssh
-#        eval `ssh-agent -s`
-#        echo "$SSH_PRIVATE" > ~/.ssh/k3s
-#        sudo chmod 600 ~/.ssh/k3s
-#        ssh-add - <<< "$SSH_PRIVATE"
-#        ssh-keyscan -H ${{secrets.JUMP_IP}} >> ~/.ssh/known_hosts
-#        ssh ${{ secrets.JUMP_USERNAME}}@${{secrets.JUMP_IP}} ssh-keyscan ${{ secrets.K3S_HOST }} >> ~/.ssh/known_hosts
-#        sshpass -p ${{ secrets.K3S_PASS }} ssh -oProxyCommand="sshpass ssh -W %h:%p ${{ secrets.JUMP_USERNAME}}@${{secrets.JUMP_IP}}" root@${{ secrets.K3S_HOST }} "kubectl get pods -A" >> ${{ env.result_file}}  
-#      shell: bash
-#      env:
-#        SSH_PRIVATE: ${{secrets.SSH_PRIVATE}}
-#        SSH_PUBLIC: ${{secrets.SSH_PUB}}
+    - name: get info using SSH key
+      run: |
+        mkdir ~/.ssh
+        eval `ssh-agent -s`
+        ssh-add - <<< "${{ secrets.SSH_KEY }}"
+        ssh-keyscan -p 22510 -H ${{ secrets.JUMP_IP }} >> ~/.ssh/known_hosts
+        ssh -p 22510 ${{ secrets.JUMP_USERNAME }}@${{ secrets.JUMP_IP }} ssh-keyscan ${{ secrets.K3S_HOST }} >> ~/.ssh/known_hosts
+        ssh -o ProxyCommand="ssh -W %h:%p ${{ secrets.JUMP_USERNAME }}@${{ secrets.JUMP_IP }} -p 22510" root@${{ secrets.K3S_HOST }} "kubectl get pods -A" >> ${{ env.result_file }}
 
-#    - name: Check pods statuses and write other than 'Running'
-#      id: check_2
-#      run: |
-#        sed -i '/Running/d' ${{ env.result_file }}
-#        sed -i '/Completed/d' ${{ env.result_file }}
-#        echo "other_than_running=$(wc -l < ${{ env.result_file }})" >> $GITHUB_OUTPUT
+    - name: check-crashed-pods
+      id: check-pods
+      run: |
+        echo "pods-failed-count=$(cat ${{ env.result_file }} | grep -v Running | wc -l)" >> $GITHUB_OUTPUT
 
-    - name: Upload report
-      if: steps.info.outputs.OUTPUT < 4
+    - name: upload crashed pod's list
+      if: steps.check-pods.outputs.pods-failed-count > 1
       uses: actions/upload-artifact@v3
       with:
-        path: ${{ env.result_file}}
+        path: ${{ env.result_file }}
 
     - name: Notification in Slack
-      if: steps.info.outputs.OUTPUT < 4
-      uses: rtCamp/action-slack-notify@v2       
+      if: steps.check-pods.outputs.pods-failed-count > 1
+      uses: rtCamp/action-slack-notify@v2
       env:
         SLACK_CHANNEL: github_notifications
         SLACK_COLOR: 'red'
@@ -75,3 +41,12 @@ jobs:
         SLACK_TITLE: Details
         SLACK_USERNAME: Vitali Snisar
         SLACK_WEBHOOK: ${{ secrets.SLACK_WEBHOOK }}
+
+        run: |
+          mkdir ~/.ssh
+          eval `ssh-agent -s`
+          ssh-add - <<< "${{secrets.SSH_KEY}}" 
+          ssh-keyscan -H ${{ secrets.JUMP_IP }} >> ~/.ssh/known_hosts
+          ssh ${{ secrets.JUMP_USERNAME }}@${{ secrets.JUMP_IP }} ssh-keyscan ${{ secrets.K3S_HOST }} >> ~/.ssh/known_hosts
+          sshpass -p ${{ secrets.K3S_PASS  }} ssh -oProxyCommand="sshpass ssh -W %h:%p ${{ secrets.JUMP_USERNAME }}@${{ secrets.JUMP_IP }}" root@${{ secrets.3S_HOST }} "kubectl get pods -A" >> ${{ env.result_file }}
+          OUTPUT=$(cat ${{ env.result_file }} | grep -c 'Running') && echo "::set-output name=OUTPUT::$OUTPUT"
