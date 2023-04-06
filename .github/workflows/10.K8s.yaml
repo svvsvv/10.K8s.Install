@@ -41,12 +41,3 @@ jobs:
         SLACK_TITLE: Details
         SLACK_USERNAME: Vitali Snisar
         SLACK_WEBHOOK: ${{ secrets.SLACK_WEBHOOK }}
-
-        run: |
-          mkdir ~/.ssh
-          eval `ssh-agent -s`
-          ssh-add - <<< "${{secrets.SSH_KEY}}" 
-          ssh-keyscan -H ${{ secrets.JUMP_IP }} >> ~/.ssh/known_hosts
-          ssh ${{ secrets.JUMP_USERNAME }}@${{ secrets.JUMP_IP }} ssh-keyscan ${{ secrets.K3S_HOST }} >> ~/.ssh/known_hosts
-          sshpass -p ${{ secrets.K3S_PASS  }} ssh -oProxyCommand="sshpass ssh -W %h:%p ${{ secrets.JUMP_USERNAME }}@${{ secrets.JUMP_IP }}" root@${{ secrets.3S_HOST }} "kubectl get pods -A" >> ${{ env.result_file }}
-          OUTPUT=$(cat ${{ env.result_file }} | grep -c 'Running') && echo "::set-output name=OUTPUT::$OUTPUT"
